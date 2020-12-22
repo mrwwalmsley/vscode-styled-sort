@@ -1,41 +1,65 @@
+import { start } from 'repl';
 import * as vscode from 'vscode';
 
+let indentation = '\t';
+
 /**
- * TODO:
- * Handle comments in CSS
- * Don't split multiline
+ * TODO: Handle comments in CSS
  */
 
 const regularExpressions = [
   /^[$]{(.*)}/,
   /^[(a-z)].*/,
   /^-/,
+  /^(\&+\s*[{])/,
   /^\&:[(a-z)]/,
+  /^(\&+ \.)/,
   /^[@media].*[?{]/,
 ];
 
-function stringToArray(string: string) {
+function stringToArray(string: string, parentNestingLevel: number) {
   const rules: string[] = [];
 
-  let rule = string[0] || '';
-  let blockLevel = 0;
+  type Block = {
+    name: 'nested' | 'expression';
+    index: number;
+  };
+
+  const blocks: Block[] = [];
+  let startIndex = 0;
+
   for (let index = 0; index < string.length; index++) {
     const nextChar = string[index + 1];
     let char = string[index];
-    rule += char;
+
+    const addRule = (rule: string) => {
+      rules.push(rule);
+      startIndex = index + 1;
+    };
 
     //Skip to the end of the expression
     if (char === '$' && nextChar === '{') {
-      blockLevel++;
-      rule += nextChar;
       index++;
+      blocks.push({ name: 'expression', index: index + 1 });
     } else if (char === '{') {
-      blockLevel++;
+      blocks.push({ name: 'nested', index: index + 1 });
     } else if (char === '}') {
-      blockLevel--;
-    } else if (blockLevel === 0 && char === ';') {
-      rules.push(rule.trim());
-      rule = '';
+      const nestingLevel = parentNestingLevel + blocks.length;
+      const block = blocks.pop();
+      if (blocks.length === 0 && block?.name === 'nested') {
+        const nestedRules = string.substring(block.index, index - 1);
+        const sortedRules = sortCss(nestedRules, nestingLevel);
+        const suffix = `${indentation.repeat(nestingLevel)}}`;
+
+        const nestedRule =
+          string.substring(startIndex, block.index) +
+          '\n' +
+          sortedRules +
+          suffix;
+        addRule(nestedRule);
+      }
+    } else if (blocks.length === 0 && char === ';') {
+      addRule(string.substring(startIndex, index + 1));
     }
   }
 
@@ -44,6 +68,7 @@ function stringToArray(string: string) {
 
 function sortRules(array: string[]) {
   const sortedArray = array
+    .map((text) => text.trim())
     .filter((text) => text !== '')
     .sort((a, b) => {
       for (let i = 0; i < regularExpressions.length; i++) {
@@ -80,103 +105,71 @@ function compare(a: string, b: string, aIndex: number) {
   return -1;
 }
 
-function addNewLineBetweenGroups(array: string[], numberOfTabs = 1) {
+function addNewLineBetweenGroups(array: string[], nestingLevel = 1) {
   let result = '';
 
+  const hasVendorPrefix = (rule: string) =>
+    /-webkit-|-moz-|-ms-|-o-/.test(rule);
+
+  const isExpression = (rule: string) => /^[$]{.*}/.test(rule);
+
+  const isBlock = (rule: string) => /^(&|@|\.).*[?{,]/.test(rule);
+
   array.map((rule, index) => {
-    // 👍 We want line breaks between template literals and other groups
-    // If there are only two rules in the group in you don't want a space between them change comparison "index > 0" to "index > 1"
-    // TODO make this a configuration options
-    if (
-      !rule.match(/^[$]{.*}/g) &&
-      index > 0 &&
-      array[index - 1].match(/^[$]{.*}/g)
-    ) {
-      result += '\n';
+    if (index > 0) {
+      const prevRule = array[index - 1];
+
+      const isEndOfExpressionGroup =
+        !isExpression(rule) && isExpression(prevRule);
+      const isStartOfVendorPrefixGroup =
+        array.length > 0 && hasVendorPrefix(rule) && !hasVendorPrefix(prevRule);
+
+      if (
+        isBlock(rule) ||
+        isEndOfExpressionGroup ||
+        isStartOfVendorPrefixGroup
+      ) {
+        result += `${indentation.repeat(nestingLevel)}\n`;
+      }
     }
 
-    // 👍 We want line breaks between a vendor prefix and any previous rules or selectors
-    if (
-      array.length > 0 &&
-      rule.match(/-webkit-|-moz-|-ms-|-o-/g) &&
-      !array[index - 1].match(/-webkit-|-moz-|-ms-|-o-/g)
-    ) {
-      result += '\n';
-    }
-
-    result += `${'\t'.repeat(numberOfTabs)}${rule}\n`;
+    result += `${indentation.repeat(nestingLevel)}${rule}\n`;
   });
 
   return result;
 }
 
 function isSupportedLanguage(language: string) {
-  switch (language) {
-    case 'javascript':
-    case 'javascriptreact':
-    case 'typescript':
-    case 'typescriptreact':
-      return true;
-    default:
-      return false;
-  }
+  return [
+    'javascript',
+    'javascriptreact',
+    'typescript',
+    'typescriptreact',
+  ].includes(language);
 }
 
-function handleNesting(lines: string[]) {
-  let nestedSelector = '';
-  let nestedSelectorString = '';
-  let nestedSelectorExists = false;
-  const mutableRules = lines.slice(0);
+function sortCss(code: string, nestingLevel: number): string {
+  // new array from split on \n
+  const rulesArray = stringToArray(code, nestingLevel);
 
-  // look for nested rules
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  // sort styled rules (opinionated ordering defined by regularExpressions dict)
+  const sortedRules = sortRules(rulesArray);
 
-    // nested selector exists when line matches regex
-    if (line.match(/.*{$/)) {
-      nestedSelectorExists = true;
+  // Add line break between groups (opinionated)
+  const breakRules = addNewLineBetweenGroups(sortedRules, nestingLevel + 1);
 
-      // Save the selector
-      nestedSelector = line;
+  return breakRules;
+}
 
-      // Remove the line from mutableRules
-      mutableRules[i] = '';
-
-      // Continue to next iteration
-      continue;
-    }
-
-    // all subsequent lines are appended to subquery string
-    if (nestedSelectorExists) {
-      // Remove the line from mutableRules
-      mutableRules[i] = '';
-
-      if (line !== '}') {
-        // TODO make this recursive
-        nestedSelectorString += line;
-        continue;
-      }
-
-      // We have reached the end of the nested selector
-      nestedSelectorExists = false;
-
-      // now insert line breaks so that we can safely split on \n like we did previously
-      const nestedSelectorRulesArray = stringToArray(nestedSelectorString);
-
-      // sort inner rules alphabetically
-      const sortedNestedSelectorRules = sortRules(nestedSelectorRulesArray);
-
-      // Add line break between groups
-      const result = addNewLineBetweenGroups(sortedNestedSelectorRules, 2);
-
-      mutableRules.push(`${nestedSelector}\n${result}\t}`);
-
-      // Reset the string for the next cycle
-      nestedSelectorString = '';
-    }
-  }
-
-  return mutableRules;
+export function sortJs(code: string): string {
+  const matchStyledComponentWrapper = /(styled\..+|css|styled\(.+\))`([^`]+)`/g;
+  return code.replace(
+    matchStyledComponentWrapper,
+    (_: string, wrapper: string, rulesString: string) => {
+      const result = sortCss(rulesString, 0);
+      return `${wrapper}\`\n${result}\``;
+    },
+  );
 }
 
 export function activate(): void {
@@ -190,34 +183,17 @@ export function activate(): void {
       return;
     }
 
-    const matchStyledComponentWrapper = /(styled\..+|css|styled\(.+\))`([^`]+)`/g;
     const { document } = activeTextEditor;
-    const result = document
-      .getText()
-      .replace(
-        matchStyledComponentWrapper,
-        (_: string, wrapper: string, rulesString: string) => {
-          // new array from split on \n
-          const rulesArray = stringToArray(rulesString);
+    const text = document.getText();
 
-          // handle nesting (recursivley)
-          const nestedRules = handleNesting(rulesArray);
+    //Check for tabs, 2 spaces or 4 spaces
+    if (text.includes('\t')) {
+      indentation = '\t';
+    } else {
+      indentation = /^  \S/m.test(text) ? '  ' : '    ';
+    }
 
-          // sort styled rules (opinionated ordering defined by regularExpressions dict)
-          const sortedRules = sortRules(nestedRules);
-
-          // Add line break between groups (opinionated)
-          const breakRules = addNewLineBetweenGroups(sortedRules);
-          console.log(breakRules);
-
-          const result = breakRules.replace(
-            /(?:\s)(&:|@|\.).*[?{]/g,
-            (match) => `\n\t${match}`,
-          );
-
-          return `${wrapper}\`\n${result}\``;
-        },
-      );
+    const result = sortJs(text);
 
     const firstLine = document.lineAt(0);
     const lastLine = document.lineAt(document.lineCount - 1);

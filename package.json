@@ -1,6 +1,6 @@
 {
-  "name": "vscode-styled-sort",
-  "displayName": "vscode-styled-sort",
+  "name": "vscode-styled-components-sort",
+  "displayName": "vscode-styled-components-sort",
   "description": "Opinionated rule sorting for styled-components.",
   "version": "0.1.0",
   "publisher": "mrwwalmsley",
@@ -48,5 +48,6 @@
     "mocha": "^8.1.3",
     "typescript": "^4.1.2",
     "vscode-test": "^1.4.1"
-  }
+  },
+  "dependencies": {}
 }
