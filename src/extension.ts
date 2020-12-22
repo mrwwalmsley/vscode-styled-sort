@@ -13,7 +13,7 @@ const regularExpressions = [
   /^-/,
   /^(\&+\s*[{])/,
   /^\&:[(a-z)]/,
-  /^(\&+ \.)/,
+  /^(\(&+ )?[.>])/,
   /^[@media].*[?{]/,
 ];
 
@@ -113,7 +113,7 @@ function addNewLineBetweenGroups(array: string[], nestingLevel = 1) {
 
   const isExpression = (rule: string) => /^[$]{.*}/.test(rule);
 
-  const isBlock = (rule: string) => /^(&|@|\.).*[?{,]/.test(rule);
+  const isBlock = (rule: string) => /^(>|&|@|\.).*[?{,]/.test(rule);
 
   array.map((rule, index) => {
     if (index > 0) {
