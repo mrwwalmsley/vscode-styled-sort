@@ -183,4 +183,29 @@ const Icon = css\`
 	`,
     );
   });
+
+  test('comments', () => {
+    sortTest(
+      `
+const Icon = css\`
+	/* padding */
+	padding: 10px;
+	/* color */
+	color: red;
+	/*font-size*/
+	font-size: 10px;
+\`;
+	`,
+      `
+const Icon = css\`
+  /* color */
+  color: red;
+  /*font-size*/
+  font-size: 10px;
+  /* padding */
+  padding: 10px;
+\`;
+	`,
+    );
+  });
 });

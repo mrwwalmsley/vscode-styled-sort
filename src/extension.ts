@@ -3,18 +3,14 @@ import * as vscode from 'vscode';
 
 let indentation = '\t';
 
-/**
- * TODO: Handle comments in CSS
- */
-
 const regularExpressions = [
-  /^[$]{(.*)}/,
-  /^[(a-z)].*/,
+  /^\${/,
+  /^[a-z]/,
   /^-/,
   /^(&+\s*[{])/,
   /^&:[(a-z)]/,
-  /^((&+ )?[\.>])/,
-  /^[@media].*[?{]/,
+  /^(&+ +)?[\.#>a-z][^{:;]* {/,
+  /^@media/,
 ];
 
 function stringToArray(string: string, parentNestingLevel: number) {
@@ -30,15 +26,23 @@ function stringToArray(string: string, parentNestingLevel: number) {
 
   for (let index = 0; index < string.length; index++) {
     const nextChar = string[index + 1];
-    let char = string[index];
+    const char = string[index];
 
     const addRule = (rule: string) => {
       rules.push(rule);
       startIndex = index + 1;
     };
 
-    //Skip to the end of the expression
-    if (char === '$' && nextChar === '{') {
+    if (char === '/' && nextChar === '*') {
+      //Skip to the end of the comment
+      do {
+        index++;
+      } while (
+        index < string.length &&
+        string[index] !== '*' &&
+        string[index + 1] !== '/'
+      );
+    } else if (char === '$' && nextChar === '{') {
       index++;
       blocks.push({ name: 'expression', index: index + 1 });
     } else if (char === '{') {
@@ -66,11 +70,16 @@ function stringToArray(string: string, parentNestingLevel: number) {
   return rules;
 }
 
+const matchComments = /\/\*.*?\*\//g;
+
 function sortRules(array: string[]) {
   const sortedArray = array
     .map((text) => text.trim())
     .filter((text) => text !== '')
-    .sort((a, b) => {
+    .sort((aWithComments, bWithComments) => {
+      const a = aWithComments.replace(matchComments, '').trim();
+      const b = bWithComments.replace(matchComments, '').trim();
+
       for (let i = 0; i < regularExpressions.length; i++) {
         const re = regularExpressions[i];
         if (a.match(re)) {
@@ -113,7 +122,7 @@ function addNewLineBetweenGroups(array: string[], nestingLevel = 1) {
 
   const isExpression = (rule: string) => /^[$]{.*}/.test(rule);
 
-  const isBlock = (rule: string) => /^(>|&|@|\.).*[?{,]/.test(rule);
+  const isBlock = (rule: string) => /^(>|&|@|\.|#).*[?{,]/.test(rule);
 
   array.map((rule, index) => {
     if (index > 0) {
