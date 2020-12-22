@@ -4,12 +4,19 @@ import * as vscode from 'vscode';
 let indentation = '\t';
 
 const regularExpressions = [
+  //Template expressions
   /^\${/,
+  //CSS property: value pair
   /^[a-z]/,
+  //Vendor prefixes
   /^-/,
+  // & rule to increase specificity, e.g to override 3rd party library rules
   /^(&+\s*[{])/,
+  //pseudo classes
   /^&:[(a-z)]/,
-  /^(&+ +)?[\.#>a-z][^{:;]* {/,
+  //Styling child elements
+  /^(&+ +)?[*:.#>a-z][^{};]* {/,
+  //Media query rules
   /^@media/,
 ];
 
@@ -71,14 +78,15 @@ function stringToArray(string: string, parentNestingLevel: number) {
 }
 
 const matchComments = /\/\*.*?\*\//g;
+const removeComments = (code: string) => code.replace(matchComments, '').trim();
 
 function sortRules(array: string[]) {
   const sortedArray = array
     .map((text) => text.trim())
     .filter((text) => text !== '')
     .sort((aWithComments, bWithComments) => {
-      const a = aWithComments.replace(matchComments, '').trim();
-      const b = bWithComments.replace(matchComments, '').trim();
+      const a = removeComments(aWithComments);
+      const b = removeComments(bWithComments);
 
       for (let i = 0; i < regularExpressions.length; i++) {
         const re = regularExpressions[i];
@@ -122,11 +130,12 @@ function addNewLineBetweenGroups(array: string[], nestingLevel = 1) {
 
   const isExpression = (rule: string) => /^[$]{.*}/.test(rule);
 
-  const isBlock = (rule: string) => /^(>|&|@|\.|#).*[?{,]/.test(rule);
+  const isBlock = (rule: string) => /^[>&@.#:*].*[?{,]/.test(rule);
 
-  array.map((rule, index) => {
+  array.map((ruleWithComments, index) => {
     if (index > 0) {
-      const prevRule = array[index - 1];
+      const rule = removeComments(ruleWithComments);
+      const prevRule = removeComments(array[index - 1]);
 
       const isEndOfExpressionGroup =
         !isExpression(rule) && isExpression(prevRule);
@@ -142,7 +151,7 @@ function addNewLineBetweenGroups(array: string[], nestingLevel = 1) {
       }
     }
 
-    result += `${indentation.repeat(nestingLevel)}${rule}\n`;
+    result += `${indentation.repeat(nestingLevel)}${ruleWithComments}\n`;
   });
 
   return result;
