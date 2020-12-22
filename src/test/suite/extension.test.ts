@@ -9,7 +9,7 @@ suite('Extension Test Suite', () => {
   vscode.window.showInformationMessage('Start all tests.');
 
   const trim = (code: string) => {
-    return code.trim().trim().replace(/\t/g, '  ').replace(/^\s+$/m, '');
+    return code.trim().trim().replace(/^\s+$/m, '');
   };
 
   const sortTest = (input: string, output: string) => {
@@ -60,7 +60,7 @@ const Icon = css\`
 	display: flex;
 	transition: all 0.2s;
 \`;
-    		`,
+`,
     );
   });
 
@@ -75,7 +75,7 @@ const Icon = css\`
 		color: blue;
 	}
 \`;
-  		`,
+`,
       `
 const Icon = css\`
 	display: flex;
@@ -152,6 +152,32 @@ const Icon = css\`
 	&& .test {
 		color: blue;
 		font-size: 10px;
+	}
+\`;
+	`,
+    );
+  });
+
+  test('multiple selectors', () => {
+    sortTest(
+      `
+const Icon = css\`
+	background-color: \${colours.secondary};
+	& .MuiListItemIcon-root,
+	& .MuiListItemText-primary {
+		font-weight: 500;
+		color: \${colours.white};
+	}
+\`;
+	`,
+      `
+const Icon = css\`
+	background-color: \${colours.secondary};
+	
+	& .MuiListItemIcon-root,
+	& .MuiListItemText-primary {
+		color: \${colours.white};
+		font-weight: 500;
 	}
 \`;
 	`,
